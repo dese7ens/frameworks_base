@@ -41,6 +41,7 @@ import android.annotation.TestApi;
 import android.app.AppOpsManager;
 import android.app.PendingIntent;
 import android.app.PropertyInvalidatedCache;
+import android.app.compat.gms.GmsCompat;
 import android.compat.Compatibility;
 import android.compat.annotation.ChangeId;
 import android.compat.annotation.EnabledAfter;
@@ -1533,6 +1534,18 @@ public class LocationManager {
             @NonNull LocationRequest locationRequest,
             @NonNull @CallbackExecutor Executor executor,
             @NonNull LocationListener listener) {
+        if (GmsCompat.isEnabled()) {
+            if (!GmsCompat.hasPermission(ACCESS_COARSE_LOCATION)) {
+                return;
+            }
+
+            // requires privileged UPDATE_APP_OPS_STATS permission
+            locationRequest.setHideFromAppOps(false);
+            // requires privileged WRITE_SECURE_SETTINGS permission
+            locationRequest.setLocationSettingsIgnored(false);
+            // requires privileged UPDATE_DEVICE_STATS permission
+            locationRequest.setWorkSource(null);
+        }
         Preconditions.checkArgument(provider != null, "invalid null provider");
         Preconditions.checkArgument(locationRequest != null, "invalid null location request");
 
@@ -1762,6 +1775,13 @@ public class LocationManager {
      */
     public boolean hasProvider(@NonNull String provider) {
         Preconditions.checkArgument(provider != null, "invalid null provider");
+
+        if (NETWORK_PROVIDER.equals(provider)) {
+            if (!getAllProviders().contains(NETWORK_PROVIDER)) {
+                android.util.Log.d("LocationManager", "returning false from hasProvider(NETWORK_PROVIDER)");
+                return false;
+            }
+        }
 
         try {
             return mService.hasProvider(provider);

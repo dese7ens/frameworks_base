@@ -2506,6 +2506,8 @@ class StorageManagerService extends IStorageManager.Stub
         Objects.requireNonNull(fsUuid);
         synchronized (mLock) {
             final VolumeRecord rec = mRecords.get(fsUuid);
+            if (rec == null)
+                return;
             rec.nickname = nickname;
             mCallbacks.notifyVolumeRecordChanged(rec);
             writeSettingsLocked();
@@ -2519,6 +2521,8 @@ class StorageManagerService extends IStorageManager.Stub
         Objects.requireNonNull(fsUuid);
         synchronized (mLock) {
             final VolumeRecord rec = mRecords.get(fsUuid);
+            if (rec == null)
+                return;
             rec.userFlags = (rec.userFlags & ~mask) | (flags & mask);
             mCallbacks.notifyVolumeRecordChanged(rec);
             writeSettingsLocked();
@@ -4494,6 +4498,10 @@ class StorageManagerService extends IStorageManager.Stub
                 // Determine if caller requires pass_through mount; note that we do this for
                 // all processes that share a UID with MediaProvider; but this is fine, since
                 // those processes anyway share the same rights as MediaProvider.
+                return StorageManager.MOUNT_MODE_EXTERNAL_PASS_THROUGH;
+            }
+
+            if (Arrays.asList(packagesForUid).contains("com.android.externalstorage")) {
                 return StorageManager.MOUNT_MODE_EXTERNAL_PASS_THROUGH;
             }
 

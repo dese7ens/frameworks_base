@@ -40,7 +40,9 @@ import android.annotation.SystemApi;
 import android.annotation.TestApi;
 import android.app.ActivityManager;
 import android.app.AppGlobals;
+import android.app.compat.gms.GmsCompat;
 import android.compat.annotation.UnsupportedAppUsage;
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager.DeleteFlags;
@@ -57,14 +59,19 @@ import android.os.ParcelFileDescriptor;
 import android.os.Parcelable;
 import android.os.ParcelableException;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.UserHandle;
+import android.provider.Settings;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.ExceptionUtils;
+import android.util.Log;
 
+import com.android.internal.gmscompat.GmsInfo;
+import com.android.internal.gmscompat.PlayStoreHooks;
 import com.android.internal.util.IndentingPrintWriter;
 import com.android.internal.util.Preconditions;
 import com.android.internal.util.function.pooled.PooledLambda;
@@ -502,6 +509,25 @@ public class PackageInstaller {
      *         session is finalized. IDs are not reused during a given boot.
      */
     public int createSession(@NonNull SessionParams params) throws IOException {
+        if (GmsCompat.isPlayStore()) {
+            String pkg = Objects.requireNonNull(params.appPackageName);
+            /*
+            GMS Core and Play Store aren't blocked here anymore, internal configuration of Play Store
+            is changed instead to prevent it from retrying failed updates.
+            Also, Play Store is able to update APK splits of GMS Core (eg when device switches to
+            a new locale) without updating GMS Core version.
+             */
+            switch (pkg) {
+                case "app.attestation.auditor":
+                case GmsInfo.PACKAGE_GSF:
+                    ContentResolver cr = GmsCompat.appContext().getContentResolver();
+                    String pref = "gmscompat_play_store_unrestrict_pkg_" + pkg;
+                    if (Settings.Secure.getInt(cr, pref, 0) != 1) {
+                        throw new IOException("installation / updates of " + pkg + " are disallowed");
+                    }
+            }
+        }
+
         try {
             return mInstaller.createSession(params, mInstallerPackageName, mAttributionTag,
                     mUserId);
@@ -1463,6 +1489,36 @@ public class PackageInstaller {
          * @see android.app.admin.DevicePolicyManager
          */
         public void commit(@NonNull IntentSender statusReceiver) {
+            if (GmsCompat.isPlayStore()) {
+                statusReceiver = PlayStoreHooks.commitSession(this, statusReceiver);
+                if (statusReceiver == null) {
+                    return;
+                }
+            }
+
+            commitInner(statusReceiver);
+        }
+
+        /** @hide */
+        public void commitInner(@NonNull IntentSender statusReceiver) {
+            if (GmsCompat.isPlayStore()) {
+                long waitMs = 0;
+                try {
+                    waitMs = mSession.getSilentUpdateWaitMillis();
+                } catch (Exception e) {
+                    // getSilentUpdateWaitMillis() will fail if Play Store didn't set packageName
+                    // of this session. It always does currently AFAIK (September 2022)
+                    Log.e("GmsCompat", "", e);
+                }
+
+                if (waitMs > 0) {
+                    // Should happen only if the same package is updated twice within 30 seconds
+                    // (likely a Play Store bug, possibly related to APK splits)
+                    Log.d("GmsCompat", "PackageInstaller.Session.getSilentUpdateWaitMillis returned " + waitMs + ", sleeping...");
+                    SystemClock.sleep(waitMs + 100);
+                }
+            }
+
             try {
                 mSession.commit(statusReceiver, false);
             } catch (RemoteException e) {
@@ -1799,6 +1855,10 @@ public class PackageInstaller {
          */
         public SessionParams(int mode) {
             this.mode = mode;
+            if (GmsCompat.isPlayStore()) {
+                // called here instead of in createSession() to give Play Store a chance to override
+                setRequireUserAction(USER_ACTION_NOT_REQUIRED);
+            }
         }
 
         /** {@hide} */

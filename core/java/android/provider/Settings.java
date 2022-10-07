@@ -37,6 +37,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.SearchManager;
 import android.app.WallpaperManager;
+import android.app.compat.gms.GmsCompat;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.ComponentName;
 import android.content.ContentResolver;
@@ -93,6 +94,7 @@ import android.view.WindowManager.LayoutParams;
 import android.widget.Editor;
 
 import com.android.internal.annotations.GuardedBy;
+import com.android.internal.gmscompat.GmsCompatApp;
 import com.android.internal.util.Preconditions;
 import com.android.internal.widget.ILockSettings;
 
@@ -2992,9 +2994,31 @@ public final class Settings {
                     mReadableFieldsWithMaxTargetSdk);
         }
 
+        // Returns last path component of the relevant Uri.
+        // Keep in sync with GmsCompatApp#registerObserver
+        private String maybeGetGmsCompatNamespace() {
+            Uri uri = mUri;
+            // no need to use expensive equals() method in this case
+            if (uri == Global.CONTENT_URI) {
+                return "global";
+            }
+            if (uri == Secure.CONTENT_URI) {
+                return "secure";
+            }
+            return null;
+        }
+
         public boolean putStringForUser(ContentResolver cr, String name, String value,
                 String tag, boolean makeDefault, final int userHandle,
                 boolean overrideableByRestore) {
+            if (GmsCompat.isEnabled()) {
+                String ns = maybeGetGmsCompatNamespace();
+                if (ns != null && !mAllFields.contains(name)) {
+                    return GmsCompatApp.putString(ns, name, value);
+                }
+                return false;
+            }
+
             try {
                 Bundle arg = new Bundle();
                 arg.putString(Settings.NameValueTable.VALUE, value);
@@ -3055,6 +3079,15 @@ public final class Settings {
 
         @UnsupportedAppUsage
         public String getStringForUser(ContentResolver cr, String name, final int userHandle) {
+            if (GmsCompat.isEnabled()) {
+                String ns = maybeGetGmsCompatNamespace();
+                if (ns != null) {
+                    if (!mAllFields.contains(name)) {
+                        return GmsCompatApp.getString(ns, name);
+                    }
+                }
+            }
+
             // Check if the target settings key is readable. Reject if the caller is not system and
             // is trying to access a settings key defined in the Settings.Secure, Settings.System or
             // Settings.Global and is not annotated as @Readable.
@@ -3062,6 +3095,10 @@ public final class Settings {
             // still be regarded as readable.
             if (!isCallerExemptFromReadableRestriction() && mAllFields.contains(name)) {
                 if (!mReadableFields.contains(name)) {
+                    if (GmsCompat.isEnabled()) {
+                        return null;
+                    }
+
                     throw new SecurityException(
                             "Settings key: <" + name + "> is not readable. From S+, settings keys "
                                     + "annotated with @hide are restricted to system_server and "
@@ -3078,6 +3115,10 @@ public final class Settings {
                                 && application.getApplicationInfo().targetSdkVersion
                                 <= maxTargetSdk;
                         if (!targetSdkCheckOk) {
+                            if (GmsCompat.isEnabled()) {
+                                return null;
+                            }
+
                             throw new SecurityException(
                                     "Settings key: <" + name + "> is only readable to apps with "
                                             + "targetSdkVersion lower than or equal to: "
@@ -5982,6 +6023,11 @@ public final class Settings {
         public static final String WAKE_WHEN_PLUGGED_OR_UNPLUGGED = "wake_when_plugged_or_unplugged";
 
         /**
+         * @hide
+         */
+        public static final String ENABLE_TASKBAR = "enable_taskbar";
+
+        /**
          * Toast icon
          * @hide
          */
@@ -6961,6 +7007,37 @@ public final class Settings {
         public static final String QS_TILE_LABEL_SIZE = "qs_tile_label_size";
 
         /**
+         * lockscreen album art blur level
+         * @hide
+         */
+        public static final String LS_MEDIA_FILTER_BLUR_RADIUS = "ls_media_filter_blur_radius";
+
+        /**
+         * Charging symbol near battery text percentage
+         * @hide
+         */
+        public static final String TEXT_CHARGING_SYMBOL = "text_charging_symbol";
+
+        /**
+         * Whether to display set of animations when prompting the power menu
+         *
+         * @hide
+         */
+        public static final String POWER_MENU_ANIMATIONS = "power_menu_animations";
+
+        /**
+         * Whether to enable artwork blur
+         * @hide
+         */
+        public static final String MEDIA_ARTWORK_BLUR_ENABLED = "media_artwork_blur_enabled";
+
+        /**
+         * Adjust blur radius for background media
+         * @hide
+         */
+        public static final String MEDIA_ARTWORK_BLUR_RADIUS = "media_artwork_blur_radius";
+
+        /**
          * Keys we no longer back up under the current schema, but want to continue to
          * process when restoring historical backup datasets.
          *
@@ -7475,6 +7552,11 @@ public final class Settings {
                 CALL_METHOD_DELETE_SECURE,
                 sProviderHolder,
                 Secure.class);
+
+        /** @hide */
+        public static boolean isKnownKey(String key) {
+            return sNameValueCache.mAllFields.contains(key);
+        }
 
         private static ILockSettings sLockSettings = null;
 
@@ -12250,6 +12332,12 @@ public final class Settings {
          * @hide
          */
         public static final String SHOW_BACK_ARROW_GESTURE = "show_back_arrow_gesture";
+
+        /**
+         * Whether to turn on black theme
+         * @hide
+         */
+        public static final String SYSTEM_CUSTOM_THEME = "system_custom_theme";
 
         /**
          * Keys we no longer back up under the current schema, but want to continue to
@@ -17481,6 +17569,11 @@ public final class Settings {
                     CALL_METHOD_DELETE_GLOBAL,
                     sProviderHolder,
                     Global.class);
+
+        /** @hide */
+        public static boolean isKnownKey(String key) {
+            return sNameValueCache.mAllFields.contains(key);
+        }
 
         // Certain settings have been moved from global to the per-user secure namespace
         @UnsupportedAppUsage

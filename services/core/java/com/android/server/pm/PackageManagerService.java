@@ -213,6 +213,7 @@ import com.android.server.pm.permission.LegacyPermissionManagerInternal;
 import com.android.server.pm.permission.LegacyPermissionManagerService;
 import com.android.server.pm.permission.PermissionManagerService;
 import com.android.server.pm.permission.PermissionManagerServiceInternal;
+import com.android.server.pm.permission.SpecialRuntimePermUtils;
 import com.android.server.pm.pkg.PackageStateInternal;
 import com.android.server.pm.pkg.PackageUserState;
 import com.android.server.pm.pkg.PackageUserStateInternal;
@@ -240,6 +241,8 @@ import com.android.server.utils.WatchedSparseIntArray;
 import com.android.server.utils.Watcher;
 
 import dalvik.system.VMRuntime;
+
+import ink.kaleidoscope.server.ParallelSpaceManagerService;
 
 import libcore.util.HexEncoding;
 
@@ -1494,8 +1497,8 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
         }
 
         PackageManagerService m = new PackageManagerService(injector, onlyCore, factoryTest,
-                Build.VERSION.INCREMENTAL, Build.IS_ENG, Build.IS_USERDEBUG,
-                Build.VERSION.SDK_INT, Build.VERSION.INCREMENTAL);
+                String.valueOf(Build.TIME), Build.IS_ENG, Build.IS_USERDEBUG, Build.VERSION.SDK_INT,
+                Build.VERSION.INCREMENTAL);
         t.traceEnd(); // "create package manager"
 
         final CompatChange.ChangeListener selinuxChangeListener = packageName -> {
@@ -1957,8 +1960,8 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
             mIsUpgrade =
                     !buildFingerprint.equals(ver.fingerprint);
             if (mIsUpgrade) {
-                PackageManagerServiceUtils.logCriticalInfo(Log.INFO, "Upgrading from "
-                        + ver.fingerprint + " to " + Build.VERSION.INCREMENTAL);
+                PackageManagerServiceUtils.logCriticalInfo(Log.INFO,
+                        "Upgrading from " + ver.fingerprint + " to " + Build.TIME);
             }
 
             // when upgrading from pre-M, promote system app permissions from install to runtime
@@ -1985,7 +1988,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
             }
 
             mCacheDir = PackageManagerServiceUtils.preparePackageParserCache(
-                    mIsEngBuild, mIsUserDebugBuild, mIncrementalVersion);
+                    mIsEngBuild, mIsUserDebugBuild, mIncrementalVersion, mIsUpgrade);
 
             final int[] userIds = mUserManager.getUserIds();
             PackageParser2 packageParser = mInjector.getScanningCachingPackageParser();
@@ -2069,9 +2072,8 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
             // allow...  it would be nice to have some better way to handle
             // this situation.
             if (mIsUpgrade) {
-                Slog.i(TAG, "Build incremental version changed from " + ver.fingerprint + " to "
-                        + Build.VERSION.INCREMENTAL
-                        + "; regranting permissions for internal storage");
+                Slog.i(TAG, "Build fingerprint changed from " + ver.fingerprint + " to "
+                        + Build.TIME + "; regranting permissions for internal storage");
             }
             mPermissionManager.onStorageVolumeMounted(
                     StorageManager.UUID_PRIVATE_INTERNAL, mIsUpgrade);
@@ -2102,7 +2104,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
             // across OTAs and are used to drive profile verification (post OTA) and
             // profile compilation (without waiting to collect a fresh set of profiles).
             if (mIsUpgrade && !mOnlyCore) {
-                Slog.i(TAG, "Build incremental version changed; clearing code caches");
+                Slog.i(TAG, "Build fingerprint changed; clearing code caches");
                 for (int i = 0; i < packageSettings.size(); i++) {
                     final PackageSetting ps = packageSettings.valueAt(i);
                     if (Objects.equals(StorageManager.UUID_PRIVATE_INTERNAL, ps.getVolumeUuid())) {
@@ -2113,7 +2115,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
                                         | Installer.FLAG_CLEAR_APP_DATA_KEEP_ART_PROFILES);
                     }
                 }
-                ver.fingerprint = Build.VERSION.INCREMENTAL;
+                ver.fingerprint = String.valueOf(Build.TIME);
             }
 
             // Defer the app data fixup until we are done with app data clearing above.
@@ -3223,6 +3225,22 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
             final IPackageDeleteObserver2 observer, final int userId, final int deleteFlags) {
         mDeletePackageHelper.deletePackageVersionedInternal(
                 versionedPackage, observer, userId, deleteFlags, false);
+
+        // Delete for parallel users if the package is deleted in their owner.
+        if (!ParallelSpaceManagerService.isCurrentParallelOwner(userId))
+            return;
+        final long token = Binder.clearCallingIdentity();
+        try {
+            for (int parallelUserId : ParallelSpaceManagerService.getCurrentParallelUserIds()) {
+                    mDeletePackageHelper.deletePackageVersionedInternal(versionedPackage,
+                    new PackageInstallerService.PackageDeleteObserverAdapter(
+                            mContext, null, versionedPackage.getPackageName(),
+                            false, parallelUserId)
+                    .getBinder(), parallelUserId, 0, true);
+            }
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
     }
 
     boolean isCallerVerifier(@NonNull Computer snapshot, int callingUid) {
@@ -6034,6 +6052,24 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
                     knownPackages, mChangedPackagesTracker, availableFeatures, protectedBroadcasts,
                     getPerUidReadTimeouts(snapshot)
             ).doDump(snapshot, fd, pw, args);
+        }
+
+        @Override
+        public int getSpecialRuntimePermissionFlags(String packageName) {
+            final int callingUid = Binder.getCallingUid();
+
+            synchronized (mLock) {
+                AndroidPackage pkg = mPackages.get(packageName);
+                if (pkg == null) {
+                    throw new IllegalStateException();
+                }
+
+                if (UserHandle.getAppId(callingUid) != pkg.getUid()) { // getUid() confusingly returns appId
+                    throw new SecurityException();
+                }
+
+                return SpecialRuntimePermUtils.getFlags(pkg);
+            }
         }
     }
 

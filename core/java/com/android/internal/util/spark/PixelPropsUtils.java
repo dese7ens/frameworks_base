@@ -33,7 +33,6 @@ public class PixelPropsUtils {
     private static final String PACKAGE_GMS = "com.google.android.gms";
     private static final String PACKAGE_FINSKY = "com.android.vending";
     private static final String PACKAGE_SETTINGS_SERVICES = "com.google.android.settings.intelligence";
-    private static final String PROCESS_UNSTABLE = "com.google.android.gms.unstable";
     private static final String SAMSUNG = "com.samsung.android.";
 
     private static final String DEVICE = "com.spark.device";
@@ -52,17 +51,19 @@ public class PixelPropsUtils {
     private static final Map<String, ArrayList<String>> propsToKeep;
 
     private static final String[] packagesToChangePixel6Pro = {
+            "com.google.android.apps.subscriptions.red",
             "com.google.android.inputmethod.latin"
     };
 
     private static final String[] extraPackagesToChange = {
             "com.android.chrome",
-            PACKAGE_FINSKY,
             "com.breel.wallpapers20",
             "com.nhs.online.nhsonline"
     };
 
     private static final String[] packagesToKeep = {
+            PACKAGE_FINSKY,
+            PACKAGE_GMS,
             "com.google.android.GoogleCamera",
             "com.google.android.GoogleCamera.Cameight",
             "com.google.android.GoogleCamera.Go",
@@ -134,8 +135,6 @@ public class PixelPropsUtils {
             "flame"
     };
 
-    private static volatile boolean sIsGms = false;
-
     static {
         propsToKeep = new HashMap<>();
         propsToKeep.put(PACKAGE_SETTINGS_SERVICES, new ArrayList<>(Collections.singletonList("FINGERPRINT")));
@@ -147,7 +146,7 @@ public class PixelPropsUtils {
         propsToChangePixel6Pro.put("PRODUCT", "raven");
         propsToChangePixel6Pro.put("MODEL", "Pixel 6 Pro");
         propsToChangePixel6Pro.put(
-                "FINGERPRINT", "google/raven/raven:13/TP1A.220905.004/8927612:user/release-keys");
+                "FINGERPRINT", "google/raven/raven:13/TP1A.221005.002/9012097:user/release-keys");
         propsToChangePixel5 = new HashMap<>();
         propsToChangePixel5.put("BRAND", "google");
         propsToChangePixel5.put("MANUFACTURER", "Google");
@@ -155,7 +154,7 @@ public class PixelPropsUtils {
         propsToChangePixel5.put("PRODUCT", "redfin");
         propsToChangePixel5.put("MODEL", "Pixel 5");
         propsToChangePixel5.put(
-                "FINGERPRINT", "google/redfin/redfin:13/TP1A.220905.004/8927612:user/release-keys");
+                "FINGERPRINT", "google/redfin/redfin:13/TP1A.221005.002/9012097:user/release-keys");
         propsToChangePixelXL = new HashMap<>();
         propsToChangePixelXL.put("BRAND", "google");
         propsToChangePixelXL.put("MANUFACTURER", "Google");
@@ -200,12 +199,6 @@ public class PixelPropsUtils {
                 } else {
                     propsToChange.putAll(propsToChangePixel5);
                 }
-            } else if (packageName.equals(PACKAGE_GMS)) {
-                final String processName = Application.getProcessName();
-                if (processName.equals("com.google.android.gms.unstable")) {
-                    sIsGms = true;
-                    spoofBuildGms();
-                }
             } else {
                 if ((Arrays.asList(packagesToChangePixel6Pro).contains(packageName))
                         || packageName.startsWith(SAMSUNG)
@@ -231,7 +224,7 @@ public class PixelPropsUtils {
             }
             // Set proper indexing fingerprint
             if (packageName.equals(PACKAGE_SETTINGS_SERVICES)) {
-                setPropValue("FINGERPRINT", Build.VERSION.INCREMENTAL);
+                setPropValue("FINGERPRINT", String.valueOf(Build.TIME));
             }
         } else {
             if (!SystemProperties.getBoolean("persist.sys.pixelprops.games", false))
@@ -290,24 +283,6 @@ public class PixelPropsUtils {
             field.setAccessible(false);
         } catch (NoSuchFieldException | IllegalAccessException e) {
             Log.e(TAG, "Failed to set prop " + key, e);
-        }
-    }
-
-    private static void spoofBuildGms() {
-        // Alter model name to avoid hardware attestation enforcement
-        setPropValue("MODEL", "angler");
-        setPropValue("FINGERPRINT", "google/angler/angler:6.0/MDB08L/2343525:user/release-keys");
-    }
-
-    private static boolean isCallerSafetyNet() {
-        return Arrays.stream(Thread.currentThread().getStackTrace())
-                .anyMatch(elem -> elem.getClassName().contains("DroidGuard"));
-    }
-
-    public static void onEngineGetCertificateChain() {
-        // Check stack for SafetyNet
-        if (sIsGms && isCallerSafetyNet()) {
-            throw new UnsupportedOperationException();
         }
     }
 }

@@ -38,6 +38,7 @@ import android.annotation.StringRes;
 import android.annotation.UserIdInt;
 import android.annotation.XmlRes;
 import android.app.admin.DevicePolicyManager;
+import android.app.compat.gms.GmsCompat;
 import android.app.role.RoleManager;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.ComponentName;
@@ -48,6 +49,7 @@ import android.content.IntentFilter;
 import android.content.IntentSender;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApkChecksum;
+import android.content.pm.AppPermissionUtils;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ChangedPackages;
 import android.content.pm.Checksum;
@@ -120,6 +122,7 @@ import android.util.Log;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.Immutable;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.gmscompat.GmsInfo;
 import com.android.internal.os.SomeArgs;
 import com.android.internal.util.UserIcons;
 
@@ -504,6 +507,17 @@ public class ApplicationPackageManager extends PackageManager {
         if (ai == null) {
             throw new NameNotFoundException(packageName);
         }
+
+        if (GmsInfo.PACKAGE_GMS_CORE.equals(packageName)) {
+            // checked before accessing com.google.android.gms.phenotype content provider
+            // in com.google.android.libraries.phenotype.client
+            // .PhenotypeClientHelper#validateContentProvider() -> isGmsCorePreinstalled()
+            // PhenotypeFlags will always return their default values if these flags aren't set
+            if (GmsCompat.isGmsCore() || GmsCompat.isClientOfGmsCore()) {
+                ai.flags |= ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP;
+            }
+        }
+
         return maybeAdjustApplicationInfo(ai);
     }
 
@@ -819,6 +833,7 @@ public class ApplicationPackageManager extends PackageManager {
             "com.google.android.feature.PIXEL_2019_MIDYEAR_EXPERIENCE",
             "com.google.android.feature.PIXEL_2018_EXPERIENCE",
             "com.google.android.feature.PIXEL_2017_EXPERIENCE",
+            "com.google.android.feature.PIXEL_2022_MIDYEAR_EXPERIENCE",
             "com.google.android.feature.PIXEL_EXPERIENCE",
             "com.google.android.feature.GOOGLE_BUILD",
             "com.google.android.feature.GOOGLE_EXPERIENCE"
@@ -858,18 +873,15 @@ public class ApplicationPackageManager extends PackageManager {
     @Override
     public int checkPermission(String permName, String pkgName) {
         int res = PermissionManager.checkPackageNamePermission(permName, pkgName, getUserId());
+
         if (res != PERMISSION_GRANTED) {
-            // some Microsoft apps crash when INTERNET permission check fails, see
-            // com.microsoft.aad.adal.AuthenticationContext.checkInternetPermission() and
-            // com.microsoft.identity.client.PublicClientApplication.checkInternetPermission()
-            if (Manifest.permission.INTERNET.equals(permName)
-                    // don't rely on Context.getPackageName(), may be different from process package name
-                    && pkgName.equals(ActivityThread.currentPackageName())
-                    && pkgName.startsWith("com.microsoft"))
+            if (pkgName.equals(ActivityThread.currentPackageName())
+                    && AppPermissionUtils.shouldSpoofSelfCheck(permName))
             {
                 return PERMISSION_GRANTED;
             }
         }
+
         return res;
     }
 
@@ -2149,8 +2161,8 @@ public class ApplicationPackageManager extends PackageManager {
     }
 
     @UnsupportedAppUsage
-    protected ApplicationPackageManager(ContextImpl context, IPackageManager pm) {
-        mContext = context;
+    protected ApplicationPackageManager(Context context, IPackageManager pm) {
+        mContext = (ContextImpl) context;
         mPM = pm;
     }
 

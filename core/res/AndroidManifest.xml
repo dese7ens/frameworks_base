@@ -1728,6 +1728,18 @@
                 android:protectionLevel="dangerous|instant" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <permission-group android:name="android.permission-group.OTHER_SENSORS"
+        android:icon="@drawable/perm_group_location"
+        android:label="@string/permgrouplab_otherSensors"
+        android:description="@string/permgroupdesc_otherSensors"
+        android:priority="1000" />
+
+    <permission android:name="android.permission.OTHER_SENSORS"
+        android:permissionGroup="android.permission-group.UNDEFINED"
+        android:label="@string/permlab_otherSensors"
+        android:description="@string/permdesc_otherSensors"
+        android:protectionLevel="dangerous" />
+
     <!-- ====================================================================== -->
     <!-- REMOVED PERMISSIONS                                                    -->
     <!-- ====================================================================== -->
@@ -1967,13 +1979,21 @@
     <!-- ======================================= -->
     <eat-comment />
 
+    <!-- Network access -->
+    <permission-group android:name="android.permission-group.NETWORK"
+        android:icon="@drawable/perm_group_network"
+        android:label="@string/permgrouplab_network"
+        android:description="@string/permgroupdesc_network"
+        android:priority="900" />
+
     <!-- Allows applications to open network sockets.
          <p>Protection level: normal
     -->
     <permission android:name="android.permission.INTERNET"
+        android:permissionGroup="android.permission-group.UNDEFINED"
         android:description="@string/permdesc_createNetworkSockets"
         android:label="@string/permlab_createNetworkSockets"
-        android:protectionLevel="normal|instant" />
+        android:protectionLevel="dangerous|instant" />
 
     <!-- Allows applications to access information about networks.
          <p>Protection level: normal
@@ -3010,6 +3030,10 @@
     <permission android:name="android.permission.MANAGE_USERS"
         android:protectionLevel="signature|privileged" />
 
+    <!-- @hide Allow managing parallel spaces or receiving related broadcasts. -->
+    <permission android:name="android.permission.MANAGE_PARALLEL_SPACES"
+        android:protectionLevel="signature|privileged" />
+
     <!-- @SystemApi @hide Allows an application to create, remove users and get the list of
          users on the device. Applications holding this permission can create users (including
          normal, restricted, guest, managed, and demo users) and can optionally endow them with the
@@ -3537,6 +3561,21 @@
         android:label="@string/permlab_getPackageSize"
         android:description="@string/permdesc_getPackageSize"
         android:protectionLevel="normal" />
+
+    <!-- Dummy user-facing group for faking package signature -->
+    <permission-group android:name="android.permission-group.FAKE_PACKAGE"
+        android:label="@string/permgrouplab_fake_package_signature"
+        android:description="@string/permgroupdesc_fake_package_signature"
+        android:request="@string/permgrouprequest_fake_package_signature"
+        android:priority="100" />
+
+    <!-- Allows an application to change the package signature as
+         seen by applications -->
+    <permission android:name="android.permission.FAKE_PACKAGE_SIGNATURE"
+        android:permissionGroup="android.permission-group.UNDEFINED"
+        android:protectionLevel="dangerous"
+        android:label="@string/permlab_fakePackageSignature"
+        android:description="@string/permdesc_fakePackageSignature" />
 
     <!-- @deprecated No longer useful, see
          {@link android.content.pm.PackageManager#addPackageToPreferred}
@@ -6383,7 +6422,7 @@
     <!-- @hide @SystemApi Allows a logical component within an application to
          temporarily renounce a set of otherwise granted permissions. -->
     <permission android:name="android.permission.RENOUNCE_PERMISSIONS"
-                android:protectionLevel="signature|privileged" />
+                android:protectionLevel="normal" />
 
     <!-- Allows an application to read nearby streaming policy. The policy controls
          whether to allow the device to stream its notifications and apps to nearby devices.

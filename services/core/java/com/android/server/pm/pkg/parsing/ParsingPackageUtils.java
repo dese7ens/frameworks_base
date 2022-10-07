@@ -91,6 +91,7 @@ import com.android.internal.R;
 import com.android.internal.os.ClassLoaderFactory;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.XmlUtils;
+import com.android.server.ext.GmsSysServerHooks;
 import com.android.server.pm.SharedUidMigration;
 import com.android.server.pm.permission.CompatibilityPermissionInfo;
 import com.android.server.pm.pkg.component.ComponentMutateUtils;
@@ -2185,6 +2186,9 @@ public class ParsingPackageUtils {
             pkg.addActivity(a.getResult());
         }
 
+        GmsSysServerHooks.maybeAddServiceDuringParsing(pkg);
+        GmsSysServerHooks.fixupPermissions(pkg);
+
         if (hasActivityOrder) {
             pkg.sortActivities();
         }
@@ -2202,6 +2206,8 @@ public class ParsingPackageUtils {
         setSupportsSizeChanges(pkg);
 
         pkg.setHasDomainUrls(hasDomainURLs(pkg));
+
+        pkg.addUsesPermission(new ParsedUsesPermissionImpl(android.Manifest.permission.OTHER_SENSORS, 0));
 
         return input.success(pkg);
     }

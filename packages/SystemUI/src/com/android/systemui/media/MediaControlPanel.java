@@ -40,6 +40,8 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import android.graphics.drawable.TransitionDrawable;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.media.session.MediaController;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
@@ -188,6 +190,9 @@ public class MediaControlPanel {
     private final SeekBarViewModel.EnabledChangeListener mEnabledChangeListener =
             this::setIsSeekBarEnabled;
 
+    private ArtworkSettings mArtworkSettings = new ArtworkSettings();
+
+
     /**
      * Initialize a new control panel
      *
@@ -310,6 +315,10 @@ public class MediaControlPanel {
         }
         this.mIsSeekBarEnabled = isSeekBarEnabled;
         updateSeekBarVisibility();
+    }
+
+    protected void updateArtworkSettings(ArtworkSettings artworkSettings) {
+        mArtworkSettings = artworkSettings;
     }
 
     /**
@@ -631,9 +640,22 @@ public class MediaControlPanel {
             Drawable artwork;
             boolean isArtworkBound;
             Icon artworkIcon = data.getArtwork();
+            WallpaperColors wallpaperColors = null;
             if (artworkIcon != null) {
-                WallpaperColors wallpaperColors = WallpaperColors
-                        .fromBitmap(artworkIcon.getBitmap());
+                if (artworkIcon.getType() == Icon.TYPE_BITMAP
+                        || artworkIcon.getType() == Icon.TYPE_ADAPTIVE_BITMAP) {
+                    // Avoids extra processing if this is already a valid bitmap
+                    wallpaperColors = WallpaperColors
+                            .fromBitmap(artworkIcon.getBitmap());
+                } else {
+                    Drawable artworkDrawable = artworkIcon.loadDrawable(mContext);
+                    if (artworkDrawable != null) {
+                        wallpaperColors = WallpaperColors
+                                .fromDrawable(artworkIcon.loadDrawable(mContext));
+                    }
+                }
+            }
+            if (wallpaperColors != null) {
                 mutableColorScheme = new ColorScheme(wallpaperColors, true, Style.CONTENT);
                 artwork = getScaledBackground(artworkIcon, width, height);
                 isArtworkBound = true;
@@ -665,6 +687,15 @@ public class MediaControlPanel {
                 albumView.setPadding(0, 0, 0, 0);
                 if (updateBackground || (!mIsArtworkBound && isArtworkBound)) {
                     if (mPrevArtwork == null) {
+                    	   if (mArtworkSettings.getBlurEnabled()) {
+                    		   albumView.setRenderEffect(
+                        		RenderEffect.createBlurEffect(
+                            		mArtworkSettings.getBlurRadius(),
+                            		mArtworkSettings.getBlurRadius() / 2,
+                            	   Shader.TileMode.MIRROR
+                        	)
+                    	    );
+               	 }
                         albumView.setImageDrawable(artwork);
                     } else {
                         // Since we throw away the last transition, this'll pop if you backgrounds

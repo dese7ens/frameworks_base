@@ -1739,6 +1739,16 @@ package android.app.compat {
 
 }
 
+package android.app.compat.gms {
+
+  public final class GmsCompat {
+    method public static boolean hasPermission(@NonNull String);
+    method public static boolean isEnabled();
+    method public static boolean isGmsApp(@NonNull String, int);
+  }
+
+}
+
 package android.app.contentsuggestions {
 
   public final class ClassificationsRequest implements android.os.Parcelable {
@@ -3544,6 +3554,14 @@ package android.content.pm {
     method @NonNull public android.content.ComponentName getTargetComponent();
     method public void writeToParcel(@NonNull android.os.Parcel, int);
     field @NonNull public static final android.os.Parcelable.Creator<android.content.pm.ShortcutManager.ShareShortcutInfo> CREATOR;
+  }
+
+  public class SpecialRuntimePermAppUtils {
+    method public static boolean awareOfRuntimeInternetPermission();
+    method public static boolean isInternetCompatEnabled();
+    method public static boolean requestsInternetPermission();
+    field public static final int FLAG_AWARE_OF_RUNTIME_INTERNET_PERMISSION = 4; // 0x4
+    field public static final int FLAG_REQUESTS_INTERNET_PERMISSION = 2; // 0x2
   }
 
   public final class SuspendDialogInfo implements android.os.Parcelable {
