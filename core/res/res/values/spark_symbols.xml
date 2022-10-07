@@ -187,7 +187,4 @@
 
     <!-- Whether to handle audio direction changes between major call states -->
     <java-symbol type="bool" name="config_handleAudioDirectionChangesBetweenCallStateChanges" />
-
-    <!-- Whether to force enable multi resolution configuration for camera -->
-    <java-symbol type="bool" name="config_forceMultiResolution" />
 </resources>
