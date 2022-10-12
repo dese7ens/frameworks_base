@@ -108,6 +108,9 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
 
     private final TileServiceRequestController mTileServiceRequestController;
     private TileLifecycleManager.Factory mTileLifeCycleManagerFactory;
+    private final ContentObserver mSettingsObserver;
+    private final Handler mMainHandler;
+    private boolean mIsSecureTileDisabledOnLockscreen = true;
 
     @Inject
     public QSTileHost(Context context,
@@ -127,7 +130,8 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
             SecureSettings secureSettings,
             CustomTileStatePersister customTileStatePersister,
             TileServiceRequestController.Builder tileServiceRequestControllerBuilder,
-            TileLifecycleManager.Factory tileLifecycleManagerFactory
+            TileLifecycleManager.Factory tileLifecycleManagerFactory,
+            @Background Handler backgroundHandler
     ) {
         mIconController = iconController;
         mContext = context;
@@ -140,6 +144,7 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
         mBroadcastDispatcher = broadcastDispatcher;
         mTileServiceRequestController = tileServiceRequestControllerBuilder.create(this);
         mTileLifeCycleManagerFactory = tileLifecycleManagerFactory;
+        mMainHandler = mainHandler;
 
         mInstanceIdSequence = new InstanceIdSequence(MAX_QS_INSTANCE_ID);
         mCentralSurfacesOptional = centralSurfacesOptional;
@@ -151,6 +156,17 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
         mSecureSettings = secureSettings;
         mCustomTileStatePersister = customTileStatePersister;
 
+        backgroundHandler.post(this::setSecureTileDisabledOnLockscreen);
+        mSettingsObserver = new ContentObserver(backgroundHandler) {
+            @Override
+            public void onChange(boolean selfChange) {
+                setSecureTileDisabledOnLockscreen();
+            }
+        };
+        mSecureSettings.registerContentObserverForUser(
+            Settings.Secure.DISABLE_SECURE_TILES_ON_LOCKSCREEN,
+            mSettingsObserver, UserHandle.USER_ALL);
+
         mainHandler.post(() -> {
             // This is technically a hack to avoid circular dependency of
             // QSTileHost -> XXXTile -> QSTileHost. Posting ensures creation
@@ -159,6 +175,32 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
             // AutoTileManager can modify mTiles so make sure mTiles has already been initialized.
             mAutoTiles = autoTiles.get();
             mTileServiceRequestController.init();
+        });
+        mContext.registerReceiver(mLiveDisplayReceiver, new IntentFilter(
+                "lineageos.intent.action.INITIALIZE_LIVEDISPLAY"));
+    }
+
+    private final BroadcastReceiver mLiveDisplayReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String value = mTunerService.getValue(TILES_SETTING);
+            // Force remove and recreate of all tiles.
+            onTuningChanged(TILES_SETTING, "");
+            onTuningChanged(TILES_SETTING, value);
+        }
+    };
+
+    private void setSecureTileDisabledOnLockscreen() {
+        final boolean disabled = mSecureSettings.getIntForUser(
+            Settings.Secure.DISABLE_SECURE_TILES_ON_LOCKSCREEN,
+            1, UserHandle.USER_CURRENT) == 1;
+        mMainHandler.post(() -> {
+            mIsSecureTileDisabledOnLockscreen = disabled;
+            mTiles.values().stream()
+                .filter(tile -> tile instanceof SecureQSTile)
+                .map(tile -> (SecureQSTile) tile)
+                .forEach(tile ->
+                    tile.setDisabledOnLockscreen(mIsSecureTileDisabledOnLockscreen));
         });
     }
 
@@ -555,7 +597,7 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
         final String defaultTileList = res.getString(R.string.quick_settings_tiles_default);
 
         tiles.addAll(Arrays.asList(defaultTileList.split(",")));
-        if (Build.IS_DEBUGGABLE
+        if (Build.IS_ENG
                 && GarbageMonitor.ADD_MEMORY_TILE_TO_DEFAULT_ON_DEBUGGABLE_BUILDS) {
             tiles.add(GarbageMonitor.MemoryTile.TILE_SPEC);
         }
